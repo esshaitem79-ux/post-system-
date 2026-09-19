@@ -1,2 +1,288 @@
 # post-system-
 نظام عرض الطوابير
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>نظام إدارة طوابير الانتظار والشبابيك - بنك الفلاحة BADR (وكالة ولاية سطيف 190)</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Changa:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React & Babel CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body { font-family: 'Cairo', sans-serif; user-select: none; }
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 15px rgba(0, 255, 136, 0.4); }
+      50% { box-shadow: 0 0 35px rgba(255, 183, 3, 0.8); }
+    }
+    .animate-call-glow { animation: pulse-glow 1.5s infinite; }
+    @media print {
+      body * { visibility: hidden; }
+      #printable-ticket, #printable-ticket * { visibility: visible; }
+      #printable-ticket { position: absolute; left: 0; top: 0; width: 80mm; }
+    }
+  </style>
+</head>
+<body class="bg-[#01140e] text-slate-100 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const INITIAL_BRANCH = {
+      bankNameAr: 'بنك الفلاحة والتنمية الريفية',
+      branchNameAr: 'وكالة ولاية سطيف - 190',
+      branchCode: 'STF-190',
+      wilaya: 'ولاية سطيف (19)',
+      phone: '036 84 21 00',
+      address: 'شارع 08 ماي 1945، سطيف',
+      managerName: 'مدير الوكالة',
+      email: 'agence.setif190@badr-bank.dz',
+      announcementHeader: 'مرحباً بكم في بنك الفلاحة والتنمية الريفية BADR - وكالة ولاية سطيف'
+    };
+
+    const SERVICES = [
+      { id: 'general', prefix: 'A', nameAr: 'سحب وإيداع وعمليات الصندوق', desc: 'Retraits & Caisse', wait: '3 د' },
+      { id: 'accounts', prefix: 'F', nameAr: 'فتح الحسابات وبطاقات CIB', desc: 'Ouverture Comptes & Cartes', wait: '8 د' },
+      { id: 'finance', prefix: 'I', nameAr: 'القروض والاستثمار الفلاحي', desc: 'Crédits & Financements', wait: '12 د' },
+      { id: 'islamic', prefix: 'E', nameAr: 'الصيرفة الإسلامية والمضاربة', desc: 'Finance Islamique', wait: '6 د' },
+      { id: 'corporate', prefix: 'P', nameAr: 'المؤسسات والمهنيين VIP', desc: 'Entreprises & Professionnels', wait: '5 د' },
+    ];
+
+    const INITIAL_COUNTERS = [
+      { id: 1, counterNumber: 1, nameAr: 'شباك 1 - الصندوق السريع', operatorName: 'سارة بن عيسى', serviceCategory: 'general', status: 'available', completedCount: 28, currentTicket: null },
+      { id: 2, counterNumber: 2, nameAr: 'شباك 2 - السحب والمدفوعات', operatorName: 'ياسين لعريبي', serviceCategory: 'general', status: 'busy', completedCount: 34, currentTicket: { id: 't-185', ticketNumber: 'A-185', serviceNameAr: 'سحب وإيداع وعمليات الصندوق', time: '10:42' } },
+      { id: 3, counterNumber: 3, nameAr: 'شباك 3 - الحسابات وبطاقات CIB', operatorName: 'فاطمة الزهراء قاسمي', serviceCategory: 'accounts', status: 'available', completedCount: 19, currentTicket: null },
+      { id: 4, counterNumber: 4, nameAr: 'شباك 4 - القروض والتمويل الفلاحي', operatorName: 'بلقاسم دراجي', serviceCategory: 'finance', status: 'available', completedCount: 12, currentTicket: null },
+      { id: 5, counterNumber: 5, nameAr: 'شباك 5 - الصيرفة الإسلامية', operatorName: 'حسين بوعزيز', serviceCategory: 'islamic', status: 'break', completedCount: 15, currentTicket: null },
+      { id: 6, counterNumber: 6, nameAr: 'شباك 6 - الشركات والمهنيين VIP', operatorName: 'نور الهدى عثماني', serviceCategory: 'corporate', status: 'available', completedCount: 22, currentTicket: null },
+    ];
+
+    function playChimeAndVoice(ticketNumber, counterNum) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(659.25, now);
+        osc.frequency.setValueAtTime(880.00, now + 0.15);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.6);
+      } catch (e) {}
+
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(`التذكرة رقم ${ticketNumber}، يرجى التوجه إلى الشباك رقم ${counterNum}`);
+        msg.lang = 'ar-SA';
+        msg.rate = 0.9;
+        window.speechSynthesis.speak(msg);
+      }
+    }
+
+    function BadrApp() {
+      const [view, setView] = useState('display');
+      const [branchInfo, setBranchInfo] = useState(() => {
+        const saved = localStorage.getItem('badr_standalone_branch');
+        return saved ? JSON.parse(saved) : INITIAL_BRANCH;
+      });
+      const [counters, setCounters] = useState(() => {
+        const saved = localStorage.getItem('badr_standalone_counters');
+        return saved ? JSON.parse(saved) : INITIAL_COUNTERS;
+      });
+      const [waitingTickets, setWaitingTickets] = useState([
+        { id: 't-1', ticketNumber: 'A-186', serviceCategory: 'general', serviceNameAr: 'سحب وإيداع وعمليات الصندوق', time: '10:45' },
+        { id: 't-2', ticketNumber: 'F-042', serviceCategory: 'accounts', serviceNameAr: 'فتح الحسابات وبطاقات CIB', time: '10:47' },
+        { id: 't-3', ticketNumber: 'I-019', serviceCategory: 'finance', serviceNameAr: 'القروض والاستثمار الفلاحي', time: '10:50' },
+      ]);
+      const [latestCall, setLatestCall] = useState({
+        ticketNumber: 'A-185',
+        counterNumber: 2,
+        serviceName: 'عمليات الصندوق والسحب والإيداع',
+        operatorName: 'ياسين لعريبي',
+      });
+      const [activeCounterId, setActiveCounterId] = useState(2);
+      const [lastIssuedTicket, setLastIssuedTicket] = useState(null);
+      const [currentTime, setCurrentTime] = useState(new Date());
+
+      useEffect(() => {
+        localStorage.setItem('badr_standalone_branch', JSON.stringify(branchInfo));
+      }, [branchInfo]);
+
+      useEffect(() => {
+        localStorage.setItem('badr_standalone_counters', JSON.stringify(counters));
+      }, [counters]);
+
+      useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+      }, []);
+
+      const callNext = (counterId) => {
+        const counter = counters.find(c => c.id === counterId);
+        if (!counter) return;
+
+        let nextTicket = null;
+        if (waitingTickets.length > 0) {
+          nextTicket = waitingTickets[0];
+          setWaitingTickets(prev => prev.slice(1));
+        } else {
+          alert('لا يوجد زبائن في قائمة الانتظار حالياً!');
+          return;
+        }
+
+        setCounters(prev => prev.map(c => c.id === counterId ? { ...c, status: 'busy', currentTicket: nextTicket, completedCount: c.completedCount + 1 } : c));
+        setLatestCall({
+          ticketNumber: nextTicket.ticketNumber,
+          counterNumber: counter.counterNumber,
+          serviceName: nextTicket.serviceNameAr,
+          operatorName: counter.operatorName,
+        });
+        playChimeAndVoice(nextTicket.ticketNumber, counter.counterNumber);
+      };
+
+      const issueTicket = (serviceId) => {
+        const s = SERVICES.find(srv => srv.id === serviceId);
+        const randNum = Math.floor(Math.random() * 80) + 120;
+        const newT = {
+          id: `t-${Date.now()}`,
+          ticketNumber: `${s.prefix}-${randNum}`,
+          serviceCategory: s.id,
+          serviceNameAr: s.nameAr,
+          time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        };
+        setWaitingTickets(prev => [...prev, newT]);
+        setLastIssuedTicket(newT);
+      };
+
+      return (
+        <div className="flex flex-col min-h-screen">
+          <header className="bg-[#03261a] border-b-2 border-emerald-600 px-4 py-3 shadow-lg flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-emerald-900 border-2 border-amber-400 flex items-center justify-center font-bold text-amber-400">BADR</div>
+              <div>
+                <h1 className="text-lg font-black text-white">{branchInfo.bankNameAr}</h1>
+                <p className="text-xs text-emerald-300">{branchInfo.branchNameAr} • {branchInfo.branchCode}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setView('display')} className={`px-3 py-1.5 rounded-xl text-xs font-bold ${view === 'display' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-slate-300'}`}>📺 شاشة العرض</button>
+              <button onClick={() => setView('operator')} className={`px-3 py-1.5 rounded-xl text-xs font-bold ${view === 'operator' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-slate-300'}`}>👨‍💼 منصة الشباك</button>
+              <button onClick={() => setView('kiosk')} className={`px-3 py-1.5 rounded-xl text-xs font-bold ${view === 'kiosk' ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-900 text-slate-300'}`}>🎫 موزع التذاكر</button>
+              <button onClick={() => setView('settings')} className={`px-3 py-1.5 rounded-xl text-xs font-bold ${view === 'settings' ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-300'}`}>⚙️ الإعدادات</button>
+            </div>
+
+            <div className="text-amber-400 font-mono font-bold text-sm">{currentTime.toLocaleTimeString('fr-FR')}</div>
+          </header>
+
+          <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">
+            {view === 'display' && (
+              <div className="space-y-6">
+                <div className="bg-gradient-to-br from-[#032e20] to-[#011a12] border-4 border-amber-400 rounded-3xl p-6 text-center animate-call-glow">
+                  <div className="text-amber-400 font-bold text-sm mb-2">⚡ النداء الحالي الفوري ⚡</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-slate-950/70 border border-emerald-500 rounded-2xl p-6">
+                      <div className="text-slate-400 text-xs font-bold">رقم التذكرة (Ticket)</div>
+                      <div className="text-6xl font-black text-amber-400 my-2">{latestCall.ticketNumber}</div>
+                      <div className="text-emerald-300 text-xs font-bold">{latestCall.serviceName}</div>
+                    </div>
+                    <div className="bg-slate-950/70 border border-amber-500 rounded-2xl p-6">
+                      <div className="text-slate-400 text-xs font-bold">توجه إلى الشباك (Guichet)</div>
+                      <div className="text-6xl font-black text-emerald-400 my-2">{latestCall.counterNumber}</div>
+                      <div className="text-slate-300 text-xs">عون الشباك: {latestCall.operatorName}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {counters.map(counter => (
+                    <div key={counter.id} className="p-4 rounded-2xl bg-[#03261a] border-2 border-emerald-600/50">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-bold text-white text-sm">{counter.nameAr}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500 text-white font-bold">{counter.operatorName}</span>
+                      </div>
+                      <div className="text-xs text-slate-400">التذكرة الحالية: <b className="text-amber-400 text-base font-mono">{counter.currentTicket ? counter.currentTicket.ticketNumber : '---'}</b></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {view === 'operator' && (
+              <div className="max-w-2xl mx-auto bg-[#03261a] border-2 border-emerald-600 rounded-3xl p-6 space-y-4">
+                <h3 className="font-bold text-white text-lg">منصة عون الشباك واستدعاء الزبائن</h3>
+                <div className="flex gap-2">
+                  <button onClick={() => callNext(activeCounterId)} className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-500 rounded-2xl text-white font-black">📢 نداء الزبون التالي</button>
+                  <button onClick={() => playChimeAndVoice(latestCall.ticketNumber, latestCall.counterNumber)} className="px-5 py-4 bg-amber-400 hover:bg-amber-300 rounded-2xl text-slate-950 font-black">🔊 إعادة النداء</button>
+                </div>
+              </div>
+            )}
+
+            {view === 'kiosk' && (
+              <div className="max-w-2xl mx-auto space-y-4">
+                <div className="bg-[#03261a] border-2 border-emerald-600 rounded-3xl p-6 text-center">
+                  <h2 className="text-xl font-black text-white mb-4">اختر الخدمة لسحب تذكرة الانتظار</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {SERVICES.map(s => (
+                      <button key={s.id} onClick={() => issueTicket(s.id)} className="p-4 rounded-2xl bg-slate-900 hover:bg-emerald-950 border border-emerald-500 text-right">
+                        <div className="font-bold text-white">{s.nameAr}</div>
+                        <div className="text-xs text-slate-400">{s.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {lastIssuedTicket && (
+                  <div id="printable-ticket" className="bg-white text-slate-950 p-6 rounded-2xl max-w-xs mx-auto text-center space-y-2 border-2 border-dashed border-slate-400">
+                    <div className="font-bold text-xs">بنك الفلاحة والتنمية الريفية BADR</div>
+                    <div className="text-4xl font-black font-mono text-emerald-800">{lastIssuedTicket.ticketNumber}</div>
+                    <div className="text-xs text-slate-600">{lastIssuedTicket.serviceNameAr}</div>
+                    <button onClick={() => window.print()} className="px-4 py-1 rounded bg-emerald-700 text-white font-bold text-xs mt-2">🖨️ طباعة</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {view === 'settings' && (
+              <div className="max-w-xl mx-auto bg-[#03261a] border-2 border-emerald-600 rounded-3xl p-6 space-y-3 text-xs">
+                <h3 className="font-bold text-white text-sm mb-2">⚙️ تعديل بيانات المسؤول والوكالة</h3>
+                <div>
+                  <label className="text-slate-300 block mb-1 font-bold">اسم المدير / اسمي:</label>
+                  <input type="text" value={branchInfo.managerName || ''} onChange={e => setBranchInfo({...branchInfo, managerName: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold" />
+                </div>
+                <div>
+                  <label className="text-slate-300 block mb-1 font-bold">اسم الوكالة:</label>
+                  <input type="text" value={branchInfo.branchNameAr} onChange={e => setBranchInfo({...branchInfo, branchNameAr: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white" />
+                </div>
+                <div>
+                  <label className="text-slate-300 block mb-1 font-bold">رمز الوكالة (Code Agence):</label>
+                  <input type="text" value={branchInfo.branchCode} onChange={e => setBranchInfo({...branchInfo, branchCode: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-amber-300 font-mono font-bold" />
+                </div>
+                <button onClick={() => { localStorage.setItem('badr_standalone_branch', JSON.stringify(branchInfo)); alert('تم الحفظ بنجاح!'); }} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white font-black text-sm mt-3">💾 حفظ التعديلات</button>
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<BadrApp />, document.getElementById('root'));
+  </script>
+</body>
+</html>
